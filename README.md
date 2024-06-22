@@ -1,3 +1,44 @@
+# important change for gemini that is missing in the sampe
+```csharp
+      private async void SendReply()
+        {
+            var newMessage = new ChatMessage()
+            {
+                Role = "user",
+                Content = inputField.text
+            };
+            
+            AppendMessage(newMessage);
+
+            if (messages.Count == 0) newMessage.Content = prompt + "\n" + inputField.text; 
+            
+            messages.Add(newMessage);
+            
+            button.enabled = false;
+            inputField.text = "";
+            inputField.enabled = false;
+            
+            // Complete the instruction
+            var response = await gemini.GenerateContent(newMessage.Content);
+            
+            if (response.Candidates is { Length: > 0 })
+            {
+                var message = response.Candidates[0].Content.Parts[0].Text;
+                var chatMessage = new ChatMessage
+                {
+                    Role = "user",
+                    Content = message
+                };
+                messages.Add(chatMessage);
+                AppendMessage(chatMessage);
+            }
+
+            button.enabled = true;
+            inputField.enabled = true;
+        }
+```
+
+
 [![Twitter](https://img.shields.io/twitter/url/https/twitter.com/sgt3v.svg?style=social&label=Follow%20%40sgt3v)](https://twitter.com/sgt3v)
 
 
