@@ -13,7 +13,7 @@ using System.Linq;
 
 namespace OpenAI
 {
-    public class OpenAIApi
+    public class GeminiApi
     {
         /// <summary>
         ///     Reads and sets user credentials from %User%/.openai/auth.json
@@ -36,9 +36,9 @@ namespace OpenAI
         }
 
         /// OpenAI API base path for requests.
-        private const string BASE_PATH = "https://api.openai.com/v1";
+        private const string BASE_PATH = "https://generativelanguage.googleapis.com/v1beta";
 
-        public OpenAIApi(string apiKey = null, string organization = null)
+        public GeminiApi(string apiKey = null, string organization = null)
         {
             if (apiKey != null)
             {
@@ -69,6 +69,7 @@ namespace OpenAI
         {
             T data;
             
+            //TODO why are you using put just to change the method?
             using (var request = UnityWebRequest.Put(path, payload))
             {
                 request.method = method;
@@ -106,48 +107,46 @@ namespace OpenAI
         /// <param name="payload">An optional byte array of json payload to include in the request.</param>
         private async void DispatchRequest<T>(string path, string method, Action<List<T>> onResponse, Action onComplete, CancellationTokenSource token, byte[] payload = null) where T: IResponse
         {
-            using (var request = UnityWebRequest.Put(path, payload))
+            using var request = UnityWebRequest.Put(path, payload);
+            request.method = method;
+            request.SetHeaders(Configuration, ContentType.ApplicationJson);
+                
+            var asyncOperation = request.SendWebRequest();
+
+            do
             {
-                request.method = method;
-                request.SetHeaders(Configuration, ContentType.ApplicationJson);
-                
-                var asyncOperation = request.SendWebRequest();
+                List<T> dataList = new List<T>();
+                string[] lines = request.downloadHandler.text.Split('\n').Where(line => line != "").ToArray();
 
-                do
+                foreach (string line in lines)
                 {
-                    List<T> dataList = new List<T>();
-                    string[] lines = request.downloadHandler.text.Split('\n').Where(line => line != "").ToArray();
-
-                    foreach (string line in lines)
+                    var value = line.Replace("data: ", "");
+                        
+                    if (value.Contains("[DONE]")) 
                     {
-                        var value = line.Replace("data: ", "");
-                        
-                        if (value.Contains("[DONE]")) 
-                        {
-                            onComplete?.Invoke();
-                            break;
-                        }
-                        
-                        var data = JsonConvert.DeserializeObject<T>(value, jsonSerializerSettings);
-
-                        if (data?.Error != null)
-                        {
-                            ApiError error = data.Error;
-                            Debug.LogError($"Error Message: {error.Message}\nError Type: {error.Type}\n");
-                        }
-                        else
-                        {
-                            dataList.Add(data);
-                        }
+                        onComplete?.Invoke();
+                        break;
                     }
-                    onResponse?.Invoke(dataList);
-                    
-                    await Task.Yield();
+                        
+                    var data = JsonConvert.DeserializeObject<T>(value, jsonSerializerSettings);
+
+                    if (data?.Error != null)
+                    {
+                        ApiError error = data.Error;
+                        Debug.LogError($"Error Message: {error.Message}\nError Type: {error.Type}\n");
+                    }
+                    else
+                    {
+                        dataList.Add(data);
+                    }
                 }
-                while (!asyncOperation.isDone && !token.IsCancellationRequested);
-                
-                onComplete?.Invoke();
+                onResponse?.Invoke(dataList);
+                    
+                await Task.Yield();
             }
+            while (!asyncOperation.isDone && !token.IsCancellationRequested);
+                
+            onComplete?.Invoke();
         }
 
         /// <summary>
@@ -228,6 +227,26 @@ namespace OpenAI
             var payload = CreatePayload(request);
             
             return await DispatchRequest<CreateChatCompletionResponse>(path, UnityWebRequest.kHttpVerbPOST, payload);
+        }
+        
+        public async Task<GenerateContentResponse> GenerateContent(string text)
+        {
+            Debug.Log("Started generating content");
+            var url = $"{BASE_PATH}/models/gemini-1.5-flash:generateContent";
+            using var request = new UnityWebRequest(url, "POST");
+            
+            request.SetRequestHeader("Content-Type", ContentType.ApplicationJson);
+            // Yes, it's "goog". No, you did not read that wrong.
+            request.SetRequestHeader("x-goog-api-key", configuration.Auth.ApiKey);
+            var json = $"{{\"contents\":[{{\"parts\":[{{\"text\":\"{text}\"}}]}}]}}";
+            request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(json));
+            request.downloadHandler = new DownloadHandlerBuffer();
+            var operation = request.SendWebRequest();
+            while (!operation.isDone) await Task.Yield();
+            var response = JsonConvert.DeserializeObject<GenerateContentResponse>(request.downloadHandler.text,
+                jsonSerializerSettings);
+            
+            return response;
         }
         
         /// <summary>

@@ -111,6 +111,24 @@ namespace OpenAI
         public Usage Usage { get; set; }
         public string SystemFingerprint { get; set; }
     }
+
+
+    public record Parts
+    {
+        public string Text { get; set; }
+    }
+    public record Content
+    {
+        public Parts[] Parts { get; set; }
+    }
+    public record Candidate
+    {
+        public Content Content { get; set; }
+    }
+    public record GenerateContentResponse
+    {
+        public Candidate[] Candidates { get; set; }
+    }
     
     public struct ChatChoice
     {
